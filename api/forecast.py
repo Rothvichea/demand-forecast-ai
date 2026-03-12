@@ -7,15 +7,17 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 
 from api.schemas import ForecastResponse, ForecastPoint, AnomalyExplanation
 from api.explain import explain_anomaly as _explain
-from models.lstm.model import DemandLSTM
+from models.lstm.model import DemandLSTM, CNNLSTMDemand
 from models.lstm.train import SEQ_LEN, HIDDEN, LAYERS, DROPOUT, make_sequences
+from models.lstm.train_cnn_lstm import CNN_CHAN
 
 router = APIRouter()
 
-PROPHET_MODEL = "models/prophet/prophet_model.pkl"
-LSTM_MODEL    = "models/lstm/best_lstm.pt"
-SCALER_X      = "models/lstm/scaler_X.pkl"
-SCALER_Y      = "models/lstm/scaler_y.pkl"
+PROPHET_MODEL  = "models/prophet/prophet_model.pkl"
+LSTM_MODEL     = "models/lstm/best_lstm.pt"
+CNN_LSTM_MODEL = "models/lstm/best_cnn_lstm.pt"
+SCALER_X       = "models/lstm/scaler_X.pkl"
+SCALER_Y       = "models/lstm/scaler_y.pkl"
 
 FEATURE_COLS = [
     "hour_sin", "hour_cos", "dow_sin", "dow_cos",
@@ -40,12 +42,18 @@ def _load_prophet():
     return obj, []
 
 
-def _load_lstm():
+def _load_lstm(use_cnn: bool = False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model  = DemandLSTM(input_size=len(FEATURE_COLS),
-                        hidden_size=HIDDEN, num_layers=LAYERS,
-                        dropout=DROPOUT).to(device)
-    model.load_state_dict(torch.load(LSTM_MODEL, map_location=device))
+    n_feat = len(FEATURE_COLS)
+    if use_cnn:
+        model = CNNLSTMDemand(input_size=n_feat, cnn_channels=CNN_CHAN,
+                               hidden_size=HIDDEN, num_layers=LAYERS,
+                               dropout=DROPOUT).to(device)
+        model.load_state_dict(torch.load(CNN_LSTM_MODEL, map_location=device))
+    else:
+        model = DemandLSTM(input_size=n_feat, hidden_size=HIDDEN,
+                           num_layers=LAYERS, dropout=DROPOUT).to(device)
+        model.load_state_dict(torch.load(LSTM_MODEL, map_location=device))
     model.eval()
     with open(SCALER_X, "rb") as f:
         scaler_X = pickle.load(f)
@@ -99,7 +107,7 @@ def _build_features(df: pd.DataFrame) -> pd.DataFrame:
 @router.post("/predict", response_model=ForecastResponse)
 async def predict(
     file:  UploadFile = File(...),
-    model: str        = Query("lstm", enum=["lstm", "prophet"])
+    model: str        = Query("cnn_lstm", enum=["cnn_lstm", "lstm", "prophet"])
 ):
     contents = await file.read()
     try:
@@ -118,32 +126,41 @@ async def predict(
     df = df.sort_values("ds").reset_index(drop=True)
     df = _build_features(df)
 
-    points, mae = _predict_prophet(df) if model == "prophet" else _predict_lstm(df)
+    if model == "prophet":
+        points, mae = _predict_prophet(df)
+    elif model == "cnn_lstm":
+        points, mae = _predict_lstm(df, use_cnn=True)
+    else:
+        points, mae = _predict_lstm(df, use_cnn=False)
 
     # ── Claude explanation on worst anomaly ───────────────
     anomaly_points = [p for p in points if p.anomaly]
     explanation    = None
 
     if anomaly_points:
-        worst      = max(anomaly_points, key=lambda p: p.yhat)
-        ts         = pd.Timestamp(worst.ds)
-        yhat_lower = worst.yhat_lower or worst.yhat * 0.7
-        yhat_upper = worst.yhat_upper or worst.yhat * 1.3
+        # pick the point with the largest absolute error
+        worst = max(anomaly_points,
+                    key=lambda p: abs(p.y_actual - p.yhat))
+        ts_worst   = pd.Timestamp(worst.ds)
+        deviation  = worst.y_actual - worst.yhat
+        dev_pct    = abs(deviation) / worst.yhat * 100 if worst.yhat > 0 else 0
+        yhat_lower = worst.yhat_lower or worst.yhat * 0.80
+        yhat_upper = worst.yhat_upper or worst.yhat * 1.20
 
         anomaly_info = {
             "is_anomaly":    True,
-            "actual":        worst.yhat,
-            "forecast":      worst.yhat * 0.75,
+            "actual":        worst.y_actual,
+            "forecast":      worst.yhat,
             "lower_bound":   yhat_lower,
             "upper_bound":   yhat_upper,
-            "deviation_kwh": worst.yhat - worst.yhat * 0.75,
-            "deviation_pct": 25.0
+            "deviation_kwh": round(deviation, 2),
+            "deviation_pct": round(dev_pct, 1)
         }
         context = {
             "timestamp":   str(worst.ds),
             "load_type":   "unknown",
-            "hour":        ts.hour,
-            "day_of_week": ts.day_name()
+            "hour":        ts_worst.hour,
+            "day_of_week": ts_worst.day_name()
         }
         exp_raw = _explain(anomaly_info, context)
         if exp_raw:
@@ -180,12 +197,20 @@ def _predict_prophet(df: pd.DataFrame):
     actual     = test["y"].values
     ts         = test["ds"].values
 
-    anomaly = (actual < yhat_lower) | (actual > yhat_upper)
-    mae     = float(np.mean(np.abs(actual - yhat)))
+    errors    = np.abs(actual - yhat)
+    roll_mean = pd.Series(errors).rolling(24, min_periods=1).mean().fillna(0).values
+    roll_std  = pd.Series(errors).rolling(24, min_periods=1).std().fillna(1).values
+    # flag when error is notably worse than the rolling baseline for this model
+    # minimum 10 kWh to avoid flagging noise on idle periods
+    threshold = np.maximum(roll_mean + 2 * roll_std, 10.0)
+    anomaly   = errors > threshold
+
+    mae = float(np.mean(errors))
 
     points = [
         ForecastPoint(
             ds         = pd.Timestamp(ts[i]).isoformat(),
+            y_actual   = round(float(actual[i]),     2),
             yhat       = round(float(yhat[i]),       2),
             yhat_lower = round(float(yhat_lower[i]), 2),
             yhat_upper = round(float(yhat_upper[i]), 2),
@@ -197,8 +222,8 @@ def _predict_prophet(df: pd.DataFrame):
 
 
 # ── LSTM PREDICT ──────────────────────────────────────────
-def _predict_lstm(df: pd.DataFrame):
-    lstm, scaler_X, scaler_y, device = _load_lstm()
+def _predict_lstm(df: pd.DataFrame, use_cnn: bool = False):
+    lstm, scaler_X, scaler_y, device = _load_lstm(use_cnn=use_cnn)
 
     split   = int(len(df) * 0.8)
     test_df = df[split:].reset_index(drop=True)
@@ -230,15 +255,16 @@ def _predict_lstm(df: pd.DataFrame):
     errors    = np.abs(actual_kWh - pred_kWh)
     roll_mean = pd.Series(errors).rolling(24, min_periods=1).mean().fillna(0).values
     roll_std  = pd.Series(errors).rolling(24, min_periods=1).std().fillna(1).values
-    threshold = np.maximum(roll_mean + 3 * roll_std, actual_kWh * 0.20)
+    threshold = np.maximum(roll_mean + 2 * roll_std, 10.0)
     anomaly   = errors > threshold
 
     mae    = float(np.mean(errors))
     points = [
         ForecastPoint(
-            ds      = pd.Timestamp(ts[i]).isoformat(),
-            yhat    = round(float(pred_kWh[i]), 2),
-            anomaly = bool(anomaly[i])
+            ds       = pd.Timestamp(ts[i]).isoformat(),
+            y_actual = round(float(actual_kWh[i]), 2),
+            yhat     = round(float(pred_kWh[i]),   2),
+            anomaly  = bool(anomaly[i])
         )
         for i in range(n)
     ]

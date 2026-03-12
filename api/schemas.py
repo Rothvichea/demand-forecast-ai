@@ -5,6 +5,7 @@ from datetime import datetime
 
 class ForecastPoint(BaseModel):
     ds: datetime
+    y_actual: float          # observed value — needed for LLM anomaly context
     yhat: float
     yhat_lower: Optional[float] = None
     yhat_upper: Optional[float] = None

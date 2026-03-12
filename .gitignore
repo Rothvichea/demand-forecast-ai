@@ -9,3 +9,6 @@ data/processed/*
 !data/processed/.gitkeep
 *.engine
 mlruns/
+mlflow.db
+*.pkl
+venv/

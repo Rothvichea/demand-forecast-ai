@@ -345,7 +345,8 @@
         <label>Model</label>
         <select id="modelSelect">
           <option value="prophet">Prophet v3 — EXCELLENT (MAE 5.83 kWh)</option>
-          <option value="lstm">LSTM v2 — GOOD (MAE 21 kWh)</option>
+          <option value="cnn_lstm" selected>CNN-LSTM — BEST (MAE 20.50 kWh)</option>
+          <option value="lstm">LSTM baseline (MAE 21.96 kWh)</option>
         </select>
       </div>
       <div class="form-group">
@@ -510,11 +511,11 @@
   // ── CHART ───────────────────────────────────────────────
   function renderChart(points) {
     const labels  = points.map(p => p.ds.replace('T',' ').slice(0,16));
-    const actuals = points.map(p => null); // no actual in response
+    const actuals = points.map(p => p.y_actual ?? null);
     const yhats   = points.map(p => p.yhat);
     const lowers  = points.map(p => p.yhat_lower ?? null);
     const uppers  = points.map(p => p.yhat_upper ?? null);
-    const anomIdx = points.map(p => p.anomaly ? p.yhat : null);
+    const anomIdx = points.map(p => p.anomaly ? p.y_actual : null);
 
     // downsample labels for readability
     const step = Math.max(1, Math.floor(labels.length / 48));
@@ -528,6 +529,15 @@
       data: {
         labels: sparseLabels,
         datasets: [
+          {
+            label: 'Actual',
+            data: actuals,
+            borderColor: '#39D353',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.1
+          },
           {
             label: 'Forecast (yhat)',
             data: yhats,
@@ -610,12 +620,17 @@
       return;
     }
 
-    const items = anomalies.slice(0, 20).map(p => `
+    const items = anomalies.slice(0, 20).map(p => {
+      const dev = p.y_actual != null ? (p.y_actual - p.yhat).toFixed(1) : null;
+      const devStr = dev != null
+        ? ` <span style="color:${dev>0?'#F78166':'#388BFD'}">(${dev>0?'+':''}${dev} kWh)</span>`
+        : '';
+      return `
       <div class="anomaly-item">
         <div class="ts">🕐 ${p.ds.replace('T',' ').slice(0,16)}</div>
-        <div class="val">⚡ ${p.yhat} kWh forecast</div>
-      </div>
-    `).join('');
+        <div class="val">⚡ actual ${p.y_actual ?? '—'} kWh · forecast ${p.yhat} kWh${devStr}</div>
+      </div>`;
+    }).join('');
 
     container.innerHTML = `
       <div style="font-size:12px;color:#F78166;margin-bottom:10px">
