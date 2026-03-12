@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pt
+*.pth
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.engine
+mlruns/

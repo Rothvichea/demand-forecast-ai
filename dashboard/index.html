@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Demand Forecast AI — Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0D1117;
+      color: #C9D1D9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    header {
+      background: #161B22;
+      border-bottom: 1px solid #21262D;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-bar {
+      width: 4px; height: 32px;
+      background: #1F6FEB;
+      border-radius: 2px;
+    }
+    .logo h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #F0F6FC;
+    }
+    .logo p {
+      font-size: 11px;
+      color: #8B949E;
+      margin-top: 2px;
+    }
+    .header-badges {
+      display: flex;
+      gap: 8px;
+    }
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid;
+    }
+    .badge-blue   { color: #388BFD; border-color: #1F6FEB; background: #0D1F3C; }
+    .badge-green  { color: #3FB950; border-color: #238636; background: #0A1F0A; }
+    .badge-purple { color: #8957E5; border-color: #6E40C9; background: #1A0F2E; }
+
+    /* ── MAIN LAYOUT ────────────────────────────────────── */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 32px;
+      display: grid;
+      grid-template-rows: auto auto auto auto;
+      gap: 20px;
+    }
+
+    /* ── CARDS ──────────────────────────────────────────── */
+    .card {
+      background: #161B22;
+      border: 1px solid #21262D;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #8B949E;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title span { font-size: 16px; }
+
+    /* ── UPLOAD SECTION ─────────────────────────────────── */
+    .upload-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 16px;
+      align-items: end;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #8B949E;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .form-group select,
+    .form-group input[type="file"] {
+      width: 100%;
+      background: #0D1117;
+      border: 1px solid #30363D;
+      border-radius: 8px;
+      color: #C9D1D9;
+      padding: 9px 12px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+    .form-group select:focus,
+    .form-group input[type="file"]:focus {
+      border-color: #1F6FEB;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: #1F6FEB;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #388BFD; }
+    .btn-primary:disabled {
+      background: #21262D;
+      color: #484F58;
+      cursor: not-allowed;
+    }
+
+    /* ── METRICS ROW ────────────────────────────────────── */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+    .metric-card {
+      background: #161B22;
+      border: 1px solid #21262D;
+      border-radius: 12px;
+      padding: 16px 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .metric-card.blue::before   { background: #1F6FEB; }
+    .metric-card.green::before  { background: #3FB950; }
+    .metric-card.orange::before { background: #F78166; }
+    .metric-card.yellow::before { background: #E3B341; }
+    .metric-card.purple::before { background: #8957E5; }
+
+    .metric-label {
+      font-size: 11px;
+      color: #8B949E;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+    .metric-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #F0F6FC;
+      line-height: 1;
+    }
+    .metric-sub {
+      font-size: 11px;
+      color: #484F58;
+      margin-top: 4px;
+    }
+
+    /* ── CHART ──────────────────────────────────────────── */
+    .chart-container {
+      position: relative;
+      height: 320px;
+    }
+
+    /* ── BOTTOM GRID ────────────────────────────────────── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    /* ── ANOMALY LIST ───────────────────────────────────── */
+    .anomaly-list {
+      max-height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .anomaly-list::-webkit-scrollbar { width: 4px; }
+    .anomaly-list::-webkit-scrollbar-track { background: #0D1117; }
+    .anomaly-list::-webkit-scrollbar-thumb { background: #30363D; border-radius: 2px; }
+
+    .anomaly-item {
+      background: #0D1117;
+      border: 1px solid #21262D;
+      border-left: 3px solid #F78166;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+    }
+    .anomaly-item .ts {
+      color: #8B949E;
+      margin-bottom: 4px;
+    }
+    .anomaly-item .val {
+      color: #F78166;
+      font-weight: 600;
+    }
+
+    /* ── CLAUDE PANEL ───────────────────────────────────── */
+    .claude-panel {
+      background: #0D1F3C;
+      border: 1px solid #1F6FEB;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .claude-panel .severity {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .sev-low    { background: #0A1F0A; color: #3FB950; border: 1px solid #238636; }
+    .sev-medium { background: #1F1A0A; color: #E3B341; border: 1px solid #9E6A03; }
+    .sev-high   { background: #1F0A0A; color: #F78166; border: 1px solid #B91C1C; }
+
+    .claude-panel p {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #C9D1D9;
+      margin-bottom: 10px;
+    }
+    .claude-panel .action-box {
+      background: #0D1117;
+      border: 1px solid #1F6FEB;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #388BFD;
+    }
+    .claude-panel .action-box strong {
+      display: block;
+      color: #8B949E;
+      font-size: 10px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    /* ── EMPTY STATE ────────────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: #484F58;
+      font-size: 13px;
+      gap: 8px;
+    }
+    .empty-state .icon { font-size: 32px; }
+
+    /* ── LOADING ────────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid #30363D;
+      border-top-color: #1F6FEB;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── STATUS BAR ─────────────────────────────────────── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #8B949E;
+      padding: 8px 0 0;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #484F58;
+    }
+    .dot.green  { background: #3FB950; }
+    .dot.orange { background: #F78166; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-bar"></div>
+    <div>
+      <h1>Demand Forecast AI</h1>
+      <p>Steel Industry Energy Forecasting · Anomaly Detection · LLM Explanation</p>
+    </div>
+  </div>
+  <div class="header-badges">
+    <span class="badge badge-blue">Prophet ✅ EXCELLENT</span>
+    <span class="badge badge-green">LSTM ✅ GOOD</span>
+    <span class="badge badge-purple">Claude API</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- UPLOAD CARD -->
+  <div class="card">
+    <div class="card-title"><span>📂</span> Upload & Predict</div>
+    <div class="upload-grid">
+      <div class="form-group">
+        <label>CSV File (ds, y, load_type)</label>
+        <input type="file" id="csvFile" accept=".csv" />
+      </div>
+      <div class="form-group">
+        <label>Model</label>
+        <select id="modelSelect">
+          <option value="prophet">Prophet v3 — EXCELLENT (MAE 5.83 kWh)</option>
+          <option value="lstm">LSTM v2 — GOOD (MAE 21 kWh)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>API Endpoint</label>
+        <select id="apiEndpoint">
+          <option value="http://localhost:8000">localhost:8000 (local)</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="runBtn" onclick="runForecast()">
+        ▶ Run Forecast
+      </button>
+    </div>
+    <div class="status-bar">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Ready — upload a CSV to start</span>
+    </div>
+  </div>
+
+  <!-- METRICS ROW -->
+  <div class="metrics-row">
+    <div class="metric-card blue">
+      <div class="metric-label">Total Points</div>
+      <div class="metric-value" id="metricPoints">—</div>
+      <div class="metric-sub">forecast hours</div>
+    </div>
+    <div class="metric-card green">
+      <div class="metric-label">MAE</div>
+      <div class="metric-value" id="metricMAE">—</div>
+      <div class="metric-sub">kWh average error</div>
+    </div>
+    <div class="metric-card orange">
+      <div class="metric-label">Anomalies</div>
+      <div class="metric-value" id="metricAnomalies">—</div>
+      <div class="metric-sub" id="metricAnomalyPct">of total hours</div>
+    </div>
+    <div class="metric-card yellow">
+      <div class="metric-label">Model</div>
+      <div class="metric-value" id="metricModel" style="font-size:18px">—</div>
+      <div class="metric-sub">active model</div>
+    </div>
+    <div class="metric-card purple">
+      <div class="metric-label">Claude API</div>
+      <div class="metric-value" id="metricClaude" style="font-size:18px">—</div>
+      <div class="metric-sub">LLM explanation</div>
+    </div>
+  </div>
+
+  <!-- CHART CARD -->
+  <div class="card">
+    <div class="card-title"><span>📈</span> Forecast vs Actual — Steel Energy Demand (kWh)</div>
+    <div class="chart-container">
+      <canvas id="forecastChart"></canvas>
+    </div>
+  </div>
+
+  <!-- BOTTOM GRID -->
+  <div class="bottom-grid">
+
+    <!-- ANOMALY LIST -->
+    <div class="card">
+      <div class="card-title"><span>🔍</span> Detected Anomalies</div>
+      <div id="anomalyContainer">
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <div>No anomalies detected yet</div>
+          <div>Run a forecast to see results</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLAUDE EXPLANATION -->
+    <div class="card">
+      <div class="card-title"><span>🤖</span> Claude API — LLM Explanation</div>
+      <div id="claudeContainer">
+        <div class="empty-state">
+          <div class="icon">🤖</div>
+          <div>No explanation yet</div>
+          <div>Claude is called only when anomalies are detected</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+  let chartInstance = null;
+
+  // ── STATUS HELPERS ──────────────────────────────────────
+  function setStatus(msg, state='idle') {
+    document.getElementById('statusText').innerHTML = msg;
+    const dot = document.getElementById('statusDot');
+    dot.className = 'dot' + (state === 'ok' ? ' green' : state === 'error' ? ' orange' : '');
+  }
+
+  // ── MAIN FUNCTION ───────────────────────────────────────
+  async function runForecast() {
+    const fileInput = document.getElementById('csvFile');
+    const model     = document.getElementById('modelSelect').value;
+    const base      = document.getElementById('apiEndpoint').value;
+    const btn       = document.getElementById('runBtn');
+
+    if (!fileInput.files[0]) {
+      setStatus('⚠️ Please select a CSV file first', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Running...';
+    setStatus('Uploading CSV and running forecast...', 'idle');
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+      const res = await fetch(`${base}/forecast/predict?model=${model}`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || res.statusText);
+      }
+
+      const data = await res.json();
+      renderDashboard(data);
+      setStatus(`✅ Forecast complete — ${data.n_points} points, ${data.forecast.filter(p=>p.anomaly).length} anomalies detected`, 'ok');
+
+    } catch(e) {
+      setStatus(`❌ Error: ${e.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '▶ Run Forecast';
+    }
+  }
+
+  // ── RENDER DASHBOARD ────────────────────────────────────
+  function renderDashboard(data) {
+    const points    = data.forecast;
+    const anomalies = points.filter(p => p.anomaly);
+
+    // metrics
+    document.getElementById('metricPoints').textContent    = data.n_points;
+    document.getElementById('metricMAE').textContent       = data.mae ? data.mae + ' kWh' : '—';
+    document.getElementById('metricAnomalies').textContent = anomalies.length;
+    document.getElementById('metricAnomalyPct').textContent= `${(anomalies.length/data.n_points*100).toFixed(1)}% of total`;
+    document.getElementById('metricModel').textContent     = data.model.toUpperCase();
+    document.getElementById('metricClaude').textContent    = data.explanation ? '✅ Called' : '⏭ Skipped';
+
+    // chart
+    renderChart(points);
+
+    // anomaly list
+    renderAnomalies(anomalies);
+
+    // claude explanation
+    renderClaude(data.explanation);
+  }
+
+  // ── CHART ───────────────────────────────────────────────
+  function renderChart(points) {
+    const labels  = points.map(p => p.ds.replace('T',' ').slice(0,16));
+    const actuals = points.map(p => null); // no actual in response
+    const yhats   = points.map(p => p.yhat);
+    const lowers  = points.map(p => p.yhat_lower ?? null);
+    const uppers  = points.map(p => p.yhat_upper ?? null);
+    const anomIdx = points.map(p => p.anomaly ? p.yhat : null);
+
+    // downsample labels for readability
+    const step = Math.max(1, Math.floor(labels.length / 48));
+    const sparseLabels = labels.map((l,i) => i % step === 0 ? l : '');
+
+    if (chartInstance) chartInstance.destroy();
+
+    const ctx = document.getElementById('forecastChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: sparseLabels,
+        datasets: [
+          {
+            label: 'Forecast (yhat)',
+            data: yhats,
+            borderColor: '#388BFD',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.3
+          },
+          {
+            label: 'Upper CI',
+            data: uppers,
+            borderColor: 'transparent',
+            backgroundColor: 'rgba(31,111,235,0.1)',
+            borderWidth: 0,
+            pointRadius: 0,
+            fill: '+1'
+          },
+          {
+            label: 'Lower CI',
+            data: lowers,
+            borderColor: 'transparent',
+            backgroundColor: 'rgba(31,111,235,0.1)',
+            borderWidth: 0,
+            pointRadius: 0,
+            fill: false
+          },
+          {
+            label: 'Anomaly',
+            data: anomIdx,
+            borderColor: 'transparent',
+            backgroundColor: '#F78166',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            showLine: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#8B949E', font: { size: 11 } }
+          },
+          tooltip: {
+            backgroundColor: '#161B22',
+            borderColor: '#30363D',
+            borderWidth: 1,
+            titleColor: '#F0F6FC',
+            bodyColor: '#C9D1D9'
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#484F58', font: { size: 10 }, maxRotation: 0 },
+            grid:  { color: '#21262D' }
+          },
+          y: {
+            ticks: { color: '#8B949E', font: { size: 11 } },
+            grid:  { color: '#21262D' },
+            title: { display: true, text: 'Energy (kWh)', color: '#8B949E' }
+          }
+        }
+      }
+    });
+  }
+
+  // ── ANOMALY LIST ────────────────────────────────────────
+  function renderAnomalies(anomalies) {
+    const container = document.getElementById('anomalyContainer');
+    if (!anomalies.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">✅</div>
+          <div>No anomalies detected</div>
+          <div>All values within 95% confidence interval</div>
+        </div>`;
+      return;
+    }
+
+    const items = anomalies.slice(0, 20).map(p => `
+      <div class="anomaly-item">
+        <div class="ts">🕐 ${p.ds.replace('T',' ').slice(0,16)}</div>
+        <div class="val">⚡ ${p.yhat} kWh forecast</div>
+      </div>
+    `).join('');
+
+    container.innerHTML = `
+      <div style="font-size:12px;color:#F78166;margin-bottom:10px">
+        ⚠️ ${anomalies.length} anomalies detected
+        ${anomalies.length > 20 ? `(showing first 20)` : ''}
+      </div>
+      <div class="anomaly-list">${items}</div>`;
+  }
+
+  // ── CLAUDE PANEL ────────────────────────────────────────
+  function renderClaude(explanation) {
+    const container = document.getElementById('claudeContainer');
+    if (!explanation) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⏭</div>
+          <div>Claude API not called</div>
+          <div>No anomalies detected — zero API cost</div>
+        </div>`;
+      return;
+    }
+
+    const sevClass = {
+      low:    'sev-low',
+      medium: 'sev-medium',
+      high:   'sev-high'
+    }[explanation.severity] || 'sev-medium';
+
+    container.innerHTML = `
+      <div class="claude-panel">
+        <span class="severity ${sevClass}">
+          ${explanation.severity.toUpperCase()} SEVERITY
+        </span>
+        <p>${explanation.explanation}</p>
+        <div class="action-box">
+          <strong>Recommended Action</strong>
+          ${explanation.recommended_action}
+        </div>
+      </div>`;
+  }
+</script>
+
+</body>
+</html>

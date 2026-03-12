@@ -1,0 +1,24 @@
+# Forecasting
+prophet
+torch
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+
+# API
+fastapi
+uvicorn
+pydantic
+python-dotenv
+
+# LLM
+anthropic
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Evaluation
+mlflow
